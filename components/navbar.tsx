@@ -6,11 +6,11 @@ import { cn } from "@/lib/utils";
 
 const navLinks = [
   {
-    href: "/donde-denuncio",
+    href: "/orientador",
     label: "¿Dónde Denuncio?",
   },
   {
-    href: "/rastrear",
+    href: "/denuncias",
     label: "Rastrear",
   },
   {
