@@ -409,86 +409,72 @@ const MOCK_DATA = {
 
 export async function GET() {
   try {
-    const username = process.env.DFA_API_USER;
-    const password = process.env.DFA_API_PASSWORD;
-    const clientId = process.env.DFA_API_CLIENT_ID ?? "4";
-    const clientSecret =
-      process.env.DFA_API_CLIENT_SECRET ??
-      "VJi8wbu3t5tiXP7A7e81G8kXq6jK5VxlcLWVIucR";
+    const token = process.env.DFA_API_REFRESH_TOKEN?.trim();
+    const email = process.env.DFA_API_USER?.trim();
+    const rawPassword = process.env.DFA_API_PASSWORD ?? "";
+    const password = rawPassword.trim();
 
-    console.log("USERNAME_ENV", username);
-    console.log("PASSWORD_ENV", password ? "****" : "NO_PASSWORD");
+    console.log("TOKEN_PREFIX", token?.slice(0, 20));
+    console.log("EMAIL_ENV", email);
 
-    // Si faltan credenciales, devolvemos directamente los datos de ejemplo
-    if (!username || !password) {
-      console.warn(
-        "Faltan credenciales DFA_API_USER / DFA_API_PASSWORD. Usando datos de ejemplo."
-      );
-      return NextResponse.json(MOCK_DATA);
+    if (!token || !email || !password) {
+      console.warn("Faltan credenciales. Usando MOCK_DATA.");
+      return NextResponse.json({
+        source: "mock",
+        ...MOCK_DATA,
+      });
     }
 
-    // 1) Pedimos token con x-www-form-urlencoded
-    const tokenBody = new URLSearchParams({
-      grant_type: "password",
-      client_id: clientId,
-      client_secret: clientSecret,
-      username,
-      password,
-    });
+    const body = { email, password };
 
-    const tokenRes = await fetch("https://comedatos.qroo.gob.mx/oauth/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: tokenBody.toString(),
-    });
-
-    const tokenText = await tokenRes.text();
-    console.log("TOKEN STATUS", tokenRes.status);
-    console.log("TOKEN BODY", tokenText);
-
-    if (!tokenRes.ok) {
-      console.error("Error al obtener token. Usando datos de ejemplo.");
-      return NextResponse.json(MOCK_DATA);
-    }
-
-    const tokenJson = JSON.parse(tokenText) as { access_token?: string };
-    const accessToken = tokenJson.access_token;
-
-    if (!accessToken) {
-      console.error("Respuesta de token sin access_token. Usando datos de ejemplo.");
-      return NextResponse.json(MOCK_DATA);
-    }
-
-    // 2) Llamamos a NucleoDigital (por si más adelante lo logras hacer funcionar)
     const dataRes = await fetch(
       "https://comedatos.qroo.gob.mx/api/NucleoDigital",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          email: username,
-          password,
-        }),
+        body: JSON.stringify(body),
       }
     );
 
-    const dataText = await dataRes.text();
-    console.log("NUCLEO STATUS", dataRes.status);
+    const contentType = dataRes.headers.get("content-type") || "";
+    const text = await dataRes.text();
 
-    if (!dataRes.ok) {
-      console.error("Error en NucleoDigital. Usando datos de ejemplo.");
-      return NextResponse.json(MOCK_DATA);
+    console.log("NUCLEO STATUS", dataRes.status);
+    console.log("NUCLEO CONTENT-TYPE", contentType);
+    console.log("NUCLEO BODY PREVIEW", text.slice(0, 200));
+
+    if (!dataRes.ok || !contentType.includes("application/json")) {
+      console.error("Error en NucleoDigital. Usando MOCK_DATA.");
+      return NextResponse.json({
+        source: "mock",
+        ...MOCK_DATA,
+      });
     }
 
-    const data = JSON.parse(dataText);
-    return NextResponse.json(data);
+    let data: any;
+    try {
+      data = JSON.parse(text);
+    } catch (e) {
+      console.error("JSON inválido. Usando MOCK_DATA.", e);
+      return NextResponse.json({
+        source: "mock",
+        ...MOCK_DATA,
+      });
+    }
+
+    // ✅ Datos reales de la API
+    return NextResponse.json({
+      source: "api",
+      ...data,
+    });
   } catch (err) {
-    console.error("Error inesperado en /api/denuncias, usando datos de ejemplo:", err);
-    return NextResponse.json(MOCK_DATA);
+    console.error("Error inesperado en /api/denuncias. Usando MOCK_DATA.", err);
+    return NextResponse.json({
+      source: "mock",
+      ...MOCK_DATA,
+    });
   }
 }
