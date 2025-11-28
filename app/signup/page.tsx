@@ -38,7 +38,7 @@ export default function SignupPage() {
       document.cookie = `user-email=${formData.email}; path=/; max-age=${7 * 24 * 60 * 60}`;
       document.cookie = `user-name=${formData.name}; path=/; max-age=${7 * 24 * 60 * 60}`;
       document.cookie = `user-role=citizen; path=/; max-age=${7 * 24 * 60 * 60}`;
-      router.push('/denuncias');
+      router.push('/admin');
     }, 1000);
   };
 
@@ -115,7 +115,11 @@ export default function SignupPage() {
               />
             </div>
 
-            {error && <div className="bg-danger bg-opacity-10 text-danger px-4 py-2 rounded-lg text-sm">{error}</div>}
+            {error && (
+  <div className="mt-2 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm">
+    {error}
+  </div>
+)}
 
             <button
               type="submit"
