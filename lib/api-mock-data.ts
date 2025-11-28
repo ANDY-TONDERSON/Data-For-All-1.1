@@ -209,6 +209,7 @@ export const programasSociales: ProgramaSocial[] = [
     zona_region_que_aplica: "Todo el Estado",
     estado_actual_programa: "Vigente",
     categoria_programa: "Apoyo a mujeres",
+    consulte_aqui: "https://mujerespoder.qroo.gob.mx/",
   },
   {
     id: 2,
