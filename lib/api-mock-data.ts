@@ -209,7 +209,7 @@ export const programasSociales: ProgramaSocial[] = [
     zona_region_que_aplica: "Todo el Estado",
     estado_actual_programa: "Vigente",
     categoria_programa: "Apoyo a mujeres",
-    consulte_aqui: "https://mujerespoder.qroo.gob.mx/",
+    link_externo: "https://mujerespoder.qroo.gob.mx/"
   },
   {
     id: 2,
@@ -223,6 +223,7 @@ export const programasSociales: ProgramaSocial[] = [
     zona_region_que_aplica: "Todo el Estado",
     estado_actual_programa: "Vigente",
     categoria_programa: "Salud",
+    link_externo: "https://salud.qroo.gob.mx/atencion-medica-gratuita"
   },
   {
     id: 3,
@@ -236,6 +237,7 @@ export const programasSociales: ProgramaSocial[] = [
     zona_region_que_aplica: "Todo el Estado",
     estado_actual_programa: "Vigente",
     categoria_programa: "Educacion",
+    link_externo: "https://www.gob.mx/becasbenitojuarez"
   },
   {
     id: 4,
@@ -249,6 +251,7 @@ export const programasSociales: ProgramaSocial[] = [
     zona_region_que_aplica: "Todo el Estado",
     estado_actual_programa: "Vigente",
     categoria_programa: "Justicia",
+    link_externo: "https://cancun.gob.mx/cancun/noticias/leer/626",
   },
 ]
 

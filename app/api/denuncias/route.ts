@@ -403,7 +403,6 @@ const MOCK_DATA = {
       numero_beneficiados_actual: "Sin datos",
       fundamentos_juridicos: "Ley de Desarrollo Social.",
       presupuesto: "Sin datos",
-      consulte_aqui: "https://mujerespoder.qroo.gob.mx/",
     },
   ],
 };

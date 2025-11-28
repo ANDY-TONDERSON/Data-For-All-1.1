@@ -3,19 +3,19 @@ export const recommendedPlatforms = {
   corruption: {
     federal: {
       name: "SIDEC - Sistema Integral de Denuncias en Línea",
-      url: "https://sidec.gob.mx",
+      url: "https://sidec.buengobierno.gob.mx/",
       minRequirements: ["Descripción breve", "Tipo de corrupción", "Entidad involucrada"],
       avgTime: "30 días",
     },
     state: {
       name: "Fiscalía Anticorrupción Q. Roo",
-      url: "https://qroo.gob.mx/denuncias",
+      url: "https://www.feccqroo.gob.mx/",
       minRequirements: ["Hechos relevantes", "Lugar y fecha", "Entidad estatal"],
       avgTime: "20 días",
     },
     municipal: {
       name: "Portal Municipal de Denuncias",
-      url: "https://municipal.gob.mx",
+      url: "https://denuncia.qroo.gob.mx/inicio/",
       minRequirements: ["Descripción del hecho", "Lugar", "Contacto"],
       avgTime: "15 días",
     },

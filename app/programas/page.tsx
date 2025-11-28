@@ -190,6 +190,16 @@ export default function ProgramasPage() {
                   <h3 className="font-semibold text-foreground mb-2">Zona que aplica</h3>
                   <p className="text-foreground">{programa.zona_region_que_aplica}</p>
                 </div>
+
+                <a
+                  href={programa.link_externo || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block mt-4 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition"
+                >
+                  Visitar sitio del programa
+                </a>
+                
               </div>
 
               <div className="mt-6 p-4 bg-muted/40 rounded-lg">

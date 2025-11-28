@@ -53,6 +53,7 @@ export interface ProgramaSocial {
   zona_region_que_aplica: string
   estado_actual_programa: "Vigente" | "Suspendido" | "Finalizado"
   categoria_programa: string
+  link_externo?: string
 }
 
 // Tipo completo para una denuncia con todos sus datos relacionados
