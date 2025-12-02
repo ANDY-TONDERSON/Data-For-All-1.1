@@ -13,7 +13,7 @@ export default function Hero() {
       id="home"
       className="text-white py-20"
       style={{
-        background: 'linear-gradient(90deg, #7a001c 0%, #a44a62ff 50%, #ebbec3ff 100%)',
+        background: 'linear-gradient(80deg, #7a001c 0%, #983c54ff 50%, #7a001c 100%)',
       }}
     >
       <div className="container mx-auto px-5 text-center">
