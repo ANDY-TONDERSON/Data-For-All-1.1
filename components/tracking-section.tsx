@@ -49,17 +49,6 @@ type ApiResolucion = {
 };
 
 type ApiResponse = {
-  // 👇 nuevo: para saber si los datos vienen de la API real o de mock
-  source?: 'api' | 'mock';
-  nombreEquipo?: string;
-  datosTablas?: {
-    h25_denuncias_bas: ApiDenunciaBasica[];
-    h25_datos_sp: ApiServidorPublico[];
-    h25_denunc_anon: ApiDenunciante[];
-    h25_falta_clasif: ApiFaltaClasif[];
-    h25_proc_inv: ApiProcInv[];
-    h25_res_sanc: ApiResolucion[];
-  };
   // por compatibilidad con tus mocks anteriores
   h25_denuncias_bas?: ApiDenunciaBasica[];
   h25_datos_sp?: ApiServidorPublico[];
@@ -67,6 +56,8 @@ type ApiResponse = {
   h25_falta_clasif?: ApiFaltaClasif[];
   h25_proc_inv?: ApiProcInv[];
   h25_res_sanc?: ApiResolucion[];
+  // y la estructura tal cual de la API real
+  h25_sp?: ApiServidorPublico[];
 };
 
 export default function TrackingSection() {
@@ -74,8 +65,31 @@ export default function TrackingSection() {
   const [petition, setPetition] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  // 👇 nuevo: para mostrar “datos reales / mock”
+  // para mostrar si vino de API real o mock
   const [dataSource, setDataSource] = useState<'api' | 'mock' | null>(null);
+
+  // 🔹 guarda los folios que sí encontraron coincidencia
+  const saveFolioLocally = (folioNumber: number) => {
+    if (typeof window === 'undefined') return;
+    try {
+      const storageKey = 'df4_recent_folios';
+      const raw = window.localStorage.getItem(storageKey);
+      let current: number[] = [];
+
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          current = parsed.filter((v) => typeof v === 'number');
+        }
+      }
+
+      // metemos al inicio y evitamos duplicados, máximo 5
+      const updated = [folioNumber, ...current.filter((v) => v !== folioNumber)].slice(0, 5);
+      window.localStorage.setItem(storageKey, JSON.stringify(updated));
+    } catch (err) {
+      console.error('No se pudo guardar el folio localmente', err);
+    }
+  };
 
   const handleSearch = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -110,19 +124,16 @@ export default function TrackingSection() {
 
       const raw: ApiResponse = await res.json();
 
-      // 👇 Guardamos de dónde viene la información
-      const source = raw.source === 'api' ? 'api' : 'mock';
+      // si tu endpoint marca si vino de API real o mock, puedes usar algo tipo:
+      const source = (raw as any).source === 'api' ? 'api' : 'mock';
       setDataSource(source);
 
-      // Soportamos formato con datosTablas (API real) y formato plano (mocks)
-      const tablas = raw.datosTablas ?? raw;
-
-      const basicosList = tablas.h25_denuncias_bas ?? [];
-      const spList = tablas.h25_datos_sp ?? [];
-      const denuncianteList = tablas.h25_denunc_anon ?? [];
-      const faltaList = tablas.h25_falta_clasif ?? [];
-      const procList = tablas.h25_proc_inv ?? [];
-      const resolList = tablas.h25_res_sanc ?? [];
+      const basicosList = raw.h25_denuncias_bas ?? [];
+      const spList = raw.h25_sp ?? raw.h25_datos_sp ?? [];
+      const denuncianteList = raw.h25_denunc_anon ?? [];
+      const faltasList = raw.h25_falta_clasif ?? [];
+      const procesosList = raw.h25_proc_inv ?? [];
+      const resolucionesList = raw.h25_res_sanc ?? [];
 
       // Buscar base por folio_id
       const basicos = basicosList.find((d) => d.folio_id === folioNumber);
@@ -136,53 +147,34 @@ export default function TrackingSection() {
 
       const denunciaId = basicos.folio_id;
 
-      const servidorPublico = spList.find(
-        (s) => s.denuncia_id === denunciaId
-      );
-      const denunciante = denuncianteList.find(
-        (d) => d.denuncia_id === denunciaId
-      );
-      const falta = faltaList.find((f) => f.denuncia_id === denunciaId);
-      const procInv = procList.find((p) => p.denuncia_id === denunciaId);
-      const resol = resolList.find((r) => r.denuncia_id === denunciaId);
+      const servidorPublico = spList.find((s) => s.denuncia_id === denunciaId);
+      const denunciante = denuncianteList.find((d) => d.denuncia_id === denunciaId);
+      const falta = faltasList.find((f) => f.denuncia_id === denunciaId);
+      const procInv = procesosList.find((p) => p.denuncia_id === denunciaId);
+      const resol = resolucionesList.find((r) => r.denuncia_id === denunciaId);
 
-      const esAnonimo = (denunciante?.calidad_denunciante || '')
-        .toLowerCase()
-        .includes('anon');
-
-      // Objeto que espera PetitionResult (similar a DenunciaDetallada)
       const petitionFromApi = {
-        folio: String(basicos.folio_id),
-        basicos: {
-          fechaEmision: new Date(basicos.fecha_emision).toLocaleDateString(
-            'es-MX',
-            { day: '2-digit', month: '2-digit', year: 'numeric' }
-          ),
+        folio: denunciaId,
+        datosGenerales: {
+          fechaEmision: new Date(basicos.fecha_emision).toLocaleDateString('es-MX'),
           motivo: basicos.razon_justificacion,
           estadoActual: basicos.estado_denuncia,
         },
         servidorPublico: {
-          alcaldiaOrganismo:
-            servidorPublico?.organismo_alcaldia ?? 'No disponible',
+          alcaldiaOrganismo: servidorPublico?.organismo_alcaldia ?? 'No disponible',
           cargo: servidorPublico?.cargo_grado_servidor ?? 'No disponible',
           tipoFalta:
             falta?.tipo_falta ??
             servidorPublico?.tipo_de_falta ??
             'No disponible',
-          unidadInvestigadora:
-            servidorPublico?.unidad_investigadora ?? 'No disponible',
+          unidadInvestigadora: servidorPublico?.unidad_investigadora ?? 'No disponible',
           idDenuncia: String(denunciaId),
         },
         denunciante: {
-          esAnonimo,
-          calidad:
-            denunciante?.calidad_denunciante ??
-            (esAnonimo ? 'Anónimo' : 'No especificado'),
-          organoControl: 'No especificado',
-          descripcion: '',
+          calidad: denunciante?.calidad_denunciante ?? 'No especificado',
         },
-        clasificacion: {
-          tipoFalta:
+        falta: {
+          tipo:
             falta?.tipo_falta ??
             servidorPublico?.tipo_de_falta ??
             'No especificado',
@@ -200,9 +192,7 @@ export default function TrackingSection() {
           estadoInvestigacion:
             resol?.resultado_fallo ?? basicos.estado_denuncia ?? 'En trámite',
           ultimaActualizacion: resol?.fecha_resolucion_final
-            ? new Date(resol.fecha_resolucion_final).toLocaleDateString(
-                'es-MX'
-              )
+            ? new Date(resol.fecha_resolucion_final).toLocaleDateString('es-MX')
             : new Date(basicos.fecha_emision).toLocaleDateString('es-MX'),
           avancePorcentaje: 'ND',
         },
@@ -230,6 +220,8 @@ export default function TrackingSection() {
       };
 
       setPetition(petitionFromApi);
+      // 👇 aquí guardamos el folio para que después lo lea el panel
+      saveFolioLocally(denunciaId);
     } catch (err) {
       console.error(err);
       setError(
@@ -277,7 +269,7 @@ export default function TrackingSection() {
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 rounded-lg bg-[#8B1538] text-white text-sm font-semibold hover:bg-[#6b0f2b] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="px-5 py-2.5 rounded-lg bg-[#8B1538] text-white font-semibold hover:bg-[#70102d] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? 'Buscando...' : 'Buscar denuncia'}
             </button>
@@ -286,19 +278,22 @@ export default function TrackingSection() {
           {/* Mensaje de origen de los datos */}
           {dataSource && (
             <p className="mt-3 text-xs text-[#6B7280]">
-              Origen de la información:{' '}
-              {dataSource === 'api'
-                ? 'Datos reales consultados desde la API de NucleoDigital.'
-                : 'Datos de demostración (mock) usados solo para pruebas.'}
+              Mostrando información proveniente de:{" "}
+              <span className="font-semibold">
+                {dataSource === 'api' ? 'API oficial de datos abiertos' : 'datos de demostración'}
+              </span>
+              .
             </p>
           )}
 
+          {/* Mensajes de error */}
           {error && (
             <div className="mt-6 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded text-sm">
               {error}
             </div>
           )}
 
+          {/* Resultado */}
           {petition && !error && <PetitionResult petition={petition} />}
         </div>
       </div>

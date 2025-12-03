@@ -76,6 +76,8 @@ type DenunciaEnriquecida = {
   resultadoFallo?: string
   tipoSancion?: string
   montoSuspension?: number
+  // para cálculo de tiempos
+  fechaResolucion?: string
 }
 
 async function obtenerDatosDesdeApi(): Promise<ApiResponse> {
@@ -87,7 +89,24 @@ async function obtenerDatosDesdeApi(): Promise<ApiResponse> {
     throw new Error("No se pudieron cargar los datos de la API");
   }
 
-  return (await res.json()) as ApiResponse;
+  // 👇 Igual que en TrackingSection: soporta API real y MOCK_DATA
+  const raw: any = await res.json();
+
+  // Si viene de la API real → los datos van en raw.datosTablas
+  // Si viene del mock → vienen directo en raw
+  const tablas = raw.datosTablas ?? raw;
+
+  const h25_sp: H25ServidorPublico[] =
+    tablas.h25_sp ?? tablas.h25_datos_sp ?? [];
+
+  return {
+    h25_sp,
+    h25_denunc_anon: tablas.h25_denunc_anon ?? [],
+    h25_denuncias_bas: tablas.h25_denuncias_bas ?? [],
+    h25_falta_clasif: tablas.h25_falta_clasif ?? [],
+    h25_proc_inv: tablas.h25_proc_inv ?? [],
+    h25_res_sanc: tablas.h25_res_sanc ?? [],
+  };
 }
 
 
@@ -102,19 +121,30 @@ function getStatusBadgeClasses(status: string) {
   return "bg-blue-100 text-blue-900"
 }
 
+// diferencia en días entre dos fechas
+function calcularDiasEntreFechas(inicio: string, fin: string): number | null {
+  const start = new Date(inicio)
+  const end = new Date(fin)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null
+  const diffMs = end.getTime() - start.getTime()
+  return diffMs / (1000 * 60 * 60 * 24)
+}
+
 export default function AdminPage() {
   const [activeSection, setActiveSection] = useState("dashboard")
   const [apiData, setApiData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [recentFolios, setRecentFolios] = useState<number[]>([])
 
+  // Datos desde la API
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true)
-        setError(null)
         const data = await obtenerDatosDesdeApi()
         setApiData(data)
+        setError(null)
       } catch (err) {
         console.error(err)
         setError("No se pudieron cargar los datos de la API. Se mostrará información limitada.")
@@ -126,6 +156,22 @@ export default function AdminPage() {
     fetchData()
   }, [])
 
+  // Folios guardados en localStorage (desde TrackingSection)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const raw = window.localStorage.getItem("df4_recent_folios")
+      if (!raw) return
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        setRecentFolios(parsed.filter((v) => typeof v === "number"))
+      }
+    } catch (err) {
+      console.error("No se pudieron leer los folios guardados localmente", err)
+    }
+  }, [])
+
+  // Enriquecer denuncias con info de otras tablas
   const denuncias: DenunciaEnriquecida[] = useMemo(() => {
     if (!apiData || !apiData.h25_denuncias_bas) return []
 
@@ -157,14 +203,16 @@ export default function AdminPage() {
         resultadoFallo: resolucion?.resultado_fallo,
         tipoSancion: resolucion?.tipo_sancion_impuesta,
         montoSuspension: resolucion?.monto_suspension,
+        fechaResolucion: resolucion?.fecha_resolucion_final,
       }
     })
   }, [apiData])
 
+  // Stats principales + tiempos
   const stats = useMemo(() => {
     const total = denuncias.length
-    const enAnalisis = denuncias.filter((d) =>
-      d.estado.toLowerCase().includes("curso") || d.estado.toLowerCase().includes("revision"),
+    const enAnalisis = denuncias.filter(
+      (d) => d.estado.toLowerCase().includes("curso") || d.estado.toLowerCase().includes("revision"),
     ).length
     const cerradas = denuncias.filter((d) => d.estado.toLowerCase().includes("cerrada")).length
     const conSancion = denuncias.filter(
@@ -173,13 +221,55 @@ export default function AdminPage() {
         (typeof d.montoSuspension === "number" && d.montoSuspension > 0),
     ).length
 
-    return { total, enAnalisis, cerradas, conSancion }
+    const duraciones = denuncias
+      .map((d) => {
+        if (!d.fecha || !d.fechaResolucion) return null
+        const dias = calcularDiasEntreFechas(d.fecha, d.fechaResolucion)
+        return dias !== null && dias >= 0 ? dias : null
+      })
+      .filter((v): v is number => v !== null)
+
+    let minimo: number | null = null
+    let maximo: number | null = null
+    let promedio: number | null = null
+
+    if (duraciones.length > 0) {
+      minimo = Math.min(...duraciones)
+      maximo = Math.max(...duraciones)
+      const suma = duraciones.reduce((acc, v) => acc + v, 0)
+      promedio = suma / duraciones.length
+    }
+
+    const porcentajeResuelto = total > 0 ? (cerradas / total) * 100 : 0
+
+    return {
+      total,
+      enAnalisis,
+      cerradas,
+      conSancion,
+      porcentajeResuelto,
+      tiemposResolucion: {
+        minimo,
+        maximo,
+        promedio,
+        casosConFecha: duraciones.length,
+      },
+    }
   }, [denuncias])
 
-  const resumen = useMemo(() => {
-    // Ordenar por fecha (más recientes primero) y tomar los primeros 4
-    return [...denuncias].sort((a, b) => (a.fecha < b.fecha ? 1 : -1)).slice(0, 4)
-  }, [denuncias])
+  const resumen = useMemo(
+    () => [...denuncias].sort((a, b) => (a.fecha < b.fecha ? 1 : -1)).slice(0, 4),
+    [denuncias],
+  )
+
+  // Denuncias cuyos folios se guardaron en localStorage
+  const denunciasGuardadas = useMemo(() => {
+    if (recentFolios.length === 0 || denuncias.length === 0) return []
+    const porId = new Map(denuncias.map((d) => [d.id, d]))
+    return recentFolios
+      .map((id) => porId.get(id))
+      .filter((d): d is DenunciaEnriquecida => Boolean(d))
+  }, [denuncias, recentFolios])
 
   return (
     <div className="min-h-screen bg-light flex flex-col">
@@ -226,8 +316,48 @@ export default function AdminPage() {
                     </Card>
                   </div>
 
+                  {/* Estadísticas de resolución */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card className="p-4 flex flex-col gap-2">
+                      <p className="text-sm text-secondary">% de resolución</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {stats.total > 0 ? `${stats.porcentajeResuelto.toFixed(1)}%` : "Sin datos"}
+                      </p>
+                      <p className="text-xs text-secondary">
+                        {stats.cerradas} de {stats.total} casos aparecen como cerrados.
+                      </p>
+                    </Card>
+
+                    <Card className="p-4 flex flex-col gap-2">
+                      <p className="text-sm text-secondary">Tiempo promedio de resolución</p>
+                      <p className="text-2xl font-bold text-primary">
+                        {stats.tiemposResolucion.promedio != null
+                          ? `${stats.tiemposResolucion.promedio.toFixed(1)} días`
+                          : "Sin datos"}
+                      </p>
+                      <p className="text-xs text-secondary">
+                        Calculado solo con casos que tienen fecha de resolución registrada (
+                        {stats.tiemposResolucion.casosConFecha} casos).
+                      </p>
+                    </Card>
+
+                    <Card className="p-4 flex flex-col gap-2">
+                      <p className="text-sm text-secondary">Rango mínimo y máximo</p>
+                      <p className="text-sm font-semibold text-primary">
+                        {stats.tiemposResolucion.minimo != null && stats.tiemposResolucion.maximo != null
+                          ? `Mín: ${stats.tiemposResolucion.minimo.toFixed(
+                              1,
+                            )} días · Máx: ${stats.tiemposResolucion.maximo.toFixed(1)} días`
+                          : "Sin datos suficientes"}
+                      </p>
+                      <p className="text-xs text-secondary">
+                        Te ayuda a detectar casos muy rápidos o muy lentos dentro del sistema.
+                      </p>
+                    </Card>
+                  </div>
+
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Resumen de casos (antes: Casos Recientes (Demo)) */}
+                    {/* Resumen de casos */}
                     <div className="lg:col-span-2">
                       <Card className="p-6">
                         <h2 className="text-xl font-semibold mb-4 text-foreground">Resumen</h2>
@@ -236,11 +366,12 @@ export default function AdminPage() {
                             No se encontraron denuncias en los datos de la API.
                           </p>
                         )}
+
                         <div className="space-y-3">
                           {resumen.map((d) => (
                             <div
                               key={d.id}
-                              className="border border-border rounded-lg p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+                              className="border border-border rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
                             >
                               <div>
                                 <p className="text-sm font-semibold text-foreground">
@@ -272,25 +403,52 @@ export default function AdminPage() {
                       </Card>
                     </div>
 
-                    {/* Acciones rápidas: sin botón de Configuración */}
+                    {/* Acciones rápidas + últimos folios */}
                     <div>
                       <Card className="p-6">
                         <h2 className="text-xl font-semibold mb-4 text-foreground">Acciones Rápidas</h2>
                         <div className="space-y-3">
-                          <Button className="w-full">
-                            📊 Generar reporte
-                          </Button>
+                          <Button className="w-full">📊 Generar reporte</Button>
                           <Button variant="outline" className="w-full bg-transparent">
                             📤 Exportar datos
                           </Button>
                         </div>
-                        <div className="pt-4 border-t border-border mt-4">
-                          <p className="text-xs text-secondary mb-1">
-                            Los datos mostrados se obtienen directamente de la API oficial.
-                          </p>
-                          <p className="text-xs text-secondary">
-                            Este panel es un resumen visual; el detalle completo puede verse en otros módulos.
-                          </p>
+
+                        <div className="pt-4 border-t border-border mt-4 space-y-3">
+                          <div>
+                            <p className="text-xs text-secondary mb-1">
+                              Los datos mostrados se obtienen directamente de la API oficial.
+                            </p>
+                            <p className="text-xs text-secondary">
+                              Este panel es un resumen visual; el detalle completo puede verse en otros módulos.
+                            </p>
+                          </div>
+
+                          <div>
+                            <h3 className="text-xs font-semibold text-foreground mb-1">
+                              Últimos folios consultados en este navegador
+                            </h3>
+                            {denunciasGuardadas.length === 0 && (
+                              <p className="text-xs text-secondary">
+                                Aún no has guardado folios desde la sección “Rastrea tu denuncia”.
+                              </p>
+                            )}
+                            {denunciasGuardadas.length > 0 && (
+                              <ul className="space-y-1 text-xs text-secondary">
+                                {denunciasGuardadas.map((d) => (
+                                  <li
+                                    key={d.id}
+                                    className="flex items-center justify-between rounded-md bg-light px-2 py-1"
+                                  >
+                                    <span className="font-medium">
+                                      FOL-{d.id.toString().padStart(5, "0")}
+                                    </span>
+                                    <span className="truncate ml-2">{d.estado}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
                         </div>
                       </Card>
                     </div>
@@ -299,6 +457,7 @@ export default function AdminPage() {
               )}
             </div>
           )}
+
           {activeSection === "petitions" && <Petitions />}
           {activeSection === "metrics" && <Metrics />}
         </main>
